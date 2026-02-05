@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: heatpump_fetcher
+    environment:
+      # Modbus Configuration
+      MODBUS_HOST: ${MODBUS_HOST:-192.168.50.112}
+      MODBUS_PORT: ${MODBUS_PORT:-502}
+      MODBUS_TIMEOUT: ${MODBUS_TIMEOUT:-2000}
+      
+      # Shelly Configuration
+      SHELLY_IP: ${SHELLY_IP:-192.168.50.134}
+      
+      # Database Configuration
+      DATBASE_CONNECTION_STRING: ${DATABASE_CONNECTION_STRING}
+      
+      # Interval Time (in milliseconds)
+      INTERVAL_TIME: ${INTERVAL_TIME:-30}
+      
+      # Node environment
+      NODE_ENV: production
+    networks:
+      - smarthome
+    restart: unless-stopped
+    # Optional: Add logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  smarthome:
+    external: true

@@ -1,0 +1,23 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "bun run src/main.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.1",
+    "modbus-serial": "^8.0.23",
+    "pg": "^8.18.0",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "@types/pg": "^8.16.0",
+    "drizzle-kit": "^0.31.8",
+    "eslint": "^9.39.2",
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.2"
+  }
+}
