@@ -27,8 +27,8 @@ services:
       
       # Node environment
       NODE_ENV: production
-    #networks:
-    #  - smarthome
+    networks:
+      - smarthome
     restart: unless-stopped
     # Optional: Add logging configuration
     logging:
@@ -41,6 +41,6 @@ volumes:
   postgres_data:
     driver: local
 
-#networks:
-#  smarthome:
-#    external: true
+networks:
+  smarthome:
+    external: true
