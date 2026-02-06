@@ -18,8 +18,6 @@ export const getShellyConsumptionData = async (
     const url = `http://${ipAdress}/rpc/EM.GetStatus?id=0`;
     const response = await fetch(url);
     const data: ShellyEMStatus = await response.json();
-    console.log("Fetched Shelly EM Data:", data);
-
     return data;
   } catch (error) {
     throw new Error("Fehler beim Abrufen der Shelly EM-Daten: " + error);
