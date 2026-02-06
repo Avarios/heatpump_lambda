@@ -32,7 +32,7 @@ function loadConfig(): {
   const shellyIP = process.env["SHELLY_IP"];
   const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"];
   const intervalTimeStr = process.env["INTERVAL_TIME"];
-  const verboseLoggingStr = process.env["VERBOSE_LOGGING"];
+  const verboseLoggingStr = process.env["VERBOSE_LOGGING"] || "false";
 
   let intervalTime: number = 0; // Default to 5 minutes in milliseconds
   let modbusPort: number = 0;
@@ -40,7 +40,7 @@ function loadConfig(): {
   let modHost: string = "";
   let shellyIp: string = "";
   let dbConnectionString: string = "";
-  let verboseLogging: boolean = false;
+  let verboseLogging: boolean = verboseLoggingStr === "true";
 
   if (
     !modbusHost ||
