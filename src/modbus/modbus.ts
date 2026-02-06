@@ -1,42 +1,18 @@
 import ModbusRTU from "modbus-serial";
-import {
-  type HeatpumpData,
-  type ModbusConfig,
-  type ModBusField,
-} from "./modbus-types";
+import { type HeatpumpData, type ModbusConfig } from "./modbus-types.js";
 import {
   ambient_state,
-  ambient_calculated,
-  boiler_high_temp,
-  boiler_low_temp,
   boiler_state,
-  buffer_high_temp,
-  buffer_low_temp,
   buffer_state,
-  heating_circuit_1_flow_temp,
-  heating_circuit_1_state,
-  heating_circuit_2_flow_temp,
-  heating_circuit_2_state,
-  heatpump_qp_heating,
-  heatpump_compressor_rating,
-  heatpump_cop,
-  heatpump_electric_energy,
-  heatpump_t_eq_in,
-  heatpump_error_number,
-  heatpump_error_state,
-  heatpump_t_flow,
-  heatpump_heat_energy,
-  heatpump_fi_power,
+  convertToTemperature,
+  convertToTemperatureHigh,
+  heating_circuit_state,
+  heatpump_errorstates,
   heatpump_operating_state,
-  heatpump_request_flow_temp,
-  heatpump_request_return_temp,
-  heatpump_request_temp_diff,
-  heatpump_request_type,
-  heatpump_t_return,
-  heatpump_state,
-  heatpump_vol_sink,
-  heatpump_vol_source,
-} from "./modbus-fields";
+  heatpump_request_state,
+  heatpump_states,
+  int32ToNumber,
+} from "./lambda-states.js";
 
 export class ModbusClient {
   private client: ModbusRTU;
@@ -75,34 +51,20 @@ export class ModbusClient {
       return;
     }
 
-    await this.client.close(() => {});
+    await this.client.close();
     this.connected = false;
     console.log("Disconnected from Modbus TCP server");
   }
 
-  private async readField(field: ModBusField<any>): Promise<void> {
+  private async readRegister(
+    adress: number,
+    length: number,
+  ): Promise<Array<number>> {
     try {
-      const result = await this.client.readHoldingRegisters(
-        field.adress,
-        field.length ?? 1,
-      );
-      let modbusResult;
-      if (
-        field.length &&
-        result.data.length > 1 &&
-        field.length > 1 &&
-        result.data[0] &&
-        result.data[1]
-      ) {
-        const value = (result.data[0] << 16) | result.data[1];
-        modbusResult = value >> 0;
-      } else {
-        modbusResult = result.data[0] ?? 0;
-      }
-
-      field.rawValue = modbusResult;
+      const result = await this.client.readHoldingRegisters(adress, length);
+      return result.data.map((x) => x);
     } catch (error) {
-      console.error(`Error reading field ${field.adress}:`, error);
+      console.error(`Error reading adress ${adress}:`, error);
       throw error;
     }
   }
@@ -117,85 +79,133 @@ export class ModbusClient {
 
     try {
       console.log("Starting individual field reads...");
+      const hpData = await this.getHeatpumpData();
+      const boilerData = await this.getBoilerData();
+      const bufferData = await this.getBufferData();
+      const heatingCircuitData = await this.getHeatingCurcuitData();
+      const ambientData = await this.getAmbientData();
 
-      try {
-        await this.readField(ambient_state);
-        await this.readField(ambient_calculated);
-        await this.readField(boiler_high_temp);
-        await this.readField(boiler_low_temp);
-        await this.readField(boiler_state);
-        await this.readField(buffer_high_temp);
-        await this.readField(buffer_low_temp);
-        await this.readField(buffer_state);
-        await this.readField(heating_circuit_1_flow_temp);
-        await this.readField(heating_circuit_1_state);
-        await this.readField(heating_circuit_2_flow_temp);
-        await this.readField(heating_circuit_2_state);
-        await this.readField(heatpump_qp_heating);
-        await this.readField(heatpump_compressor_rating);
-        await this.readField(heatpump_cop);
-        await this.readField(heatpump_electric_energy);
-        await this.readField(heatpump_t_eq_in);
-        await this.readField(heatpump_error_number);
-        await this.readField(heatpump_error_state);
-        await this.readField(heatpump_t_flow);
-        await this.readField(heatpump_heat_energy);
-        await this.readField(heatpump_fi_power);
-        await this.readField(heatpump_operating_state);
-        await this.readField(heatpump_request_flow_temp);
-        await this.readField(heatpump_request_return_temp);
-        await this.readField(heatpump_request_temp_diff);
-        await this.readField(heatpump_request_type);
-        await this.readField(heatpump_t_return);
-        await this.readField(heatpump_state);
-        await this.readField(heatpump_vol_sink);
-        await this.readField(heatpump_vol_source);
-        console.log("All fields read successfully");
-      } catch (error) {
-        console.error("Error in fetching data:", error);
-        throw error;
-      }
-
-      // Now use the convert methods from fields
-      const data: HeatpumpData = {
+      let data: Partial<HeatpumpData> = {
         event_timestamp: new Date(),
-        Ambient_State: ambient_state.convert(),
-        Ambient_TemperatureCalculated: ambient_calculated.convert(),
-        Boiler_HighTemp: boiler_high_temp.convert(),
-        Boiler_LowTemp: boiler_low_temp.convert(),
-        Boiler_State: boiler_state.convert(),
-        Buffer_HighTemp: buffer_high_temp.convert(),
-        Buffer_LowTemp: buffer_low_temp.convert(),
-        Buffer_State: buffer_state.convert(),
-        HeatingCircuit_1_FlowTemp: heating_circuit_1_flow_temp.convert(),
-        HeatingCircuit_1_State: heating_circuit_1_state.convert(),
-        HeatingCircuit_2_FlowTemp: heating_circuit_2_flow_temp.convert(),
-        HeatingCircuit_2_State: heating_circuit_2_state.convert(),
-        Heatpump_ActualHeatingCapacity: heatpump_qp_heating.convert(),
-        Heatpump_CompressorRating: heatpump_compressor_rating.convert(),
-        Heatpump_CurrentCop: heatpump_cop.convert(),
-        Heatpump_ElectricEnergy: heatpump_electric_energy.convert(),
-        Heatpump_EnergySourceInletTemp: heatpump_t_eq_in.convert(),
-        Heatpump_ErrorNumber: heatpump_error_number.convert(),
-        Heatpump_ErrorState: heatpump_error_state.convert(),
-        Heatpump_FlowlineTemp: heatpump_t_flow.convert(),
-        Heatpump_HeatEnergy: heatpump_heat_energy.convert(),
-        Heatpump_InverterActualPower: heatpump_fi_power.convert(),
-        Heatpump_OperatingState: heatpump_operating_state.convert(),
-        Heatpump_RequestFlowTemp: heatpump_request_flow_temp.convert(),
-        Heatpump_RequestReturnTemp: heatpump_request_return_temp.convert(),
-        Heatpump_RequestTempDiff: heatpump_request_temp_diff.convert(),
-        Heatpump_RequestType: heatpump_request_type.convert(),
-        Heatpump_ReturnLineTemp: heatpump_t_return.convert(),
-        Heatpump_State: heatpump_state.convert(),
-        Heatpump_VolumeSink: heatpump_vol_sink.convert(),
-        Heatpump_VolumeSourceFlow: heatpump_vol_source.convert(),
+        ...hpData,
+        ...boilerData,
+        ...bufferData,
+        ...heatingCircuitData,
+        ...ambientData,
       };
-      return data;
+      console.log("Finished individual field reads:", data);
+      return data as HeatpumpData;
     } catch (error) {
       console.error("Error fetching heatpump data:", error);
       throw error;
     }
+  }
+
+  private async getAmbientData(): Promise<Partial<HeatpumpData>> {
+    const partialData: Partial<HeatpumpData> = {};
+    const modbusResult = await this.readRegister(1, 4);
+    partialData.Ambient_State =
+      ambient_state[modbusResult[0] as number] || "UNKNOWN";
+    partialData.Ambient_TemperatureCalculated = convertToTemperature(
+      modbusResult[3] as number,
+    );
+    return partialData;
+  }
+
+  private async getHeatpumpData(): Promise<Partial<HeatpumpData>> {
+    const partialData: Partial<HeatpumpData> = {};
+    const modbusResult = await this.readRegister(1000, 24);
+    partialData.Heatpump_ErrorState =
+      heatpump_errorstates[modbusResult[0] as number] || "UNKNOWN";
+    partialData.Heatpump_ErrorNumber = modbusResult[1] as number;
+    partialData.Heatpump_State =
+      heatpump_states[modbusResult[2] as number] || "UNKNOWN";
+    partialData.Heatpump_OperatingState =
+      heatpump_operating_state[modbusResult[3] as number] || "UNKNOWN";
+    partialData.Heatpump_FlowlineTemp = convertToTemperatureHigh(
+      modbusResult[4] as number,
+    );
+    partialData.Heatpump_ReturnLineTemp = convertToTemperatureHigh(
+      modbusResult[5] as number,
+    );
+
+    partialData.Heatpump_VolumeSink = modbusResult[6] as number;
+    partialData.Heatpump_EnergySourceInletTemp = convertToTemperatureHigh(
+      modbusResult[7] as number,
+    );
+    partialData.Heatpump_VolumeSourceFlow = convertToTemperatureHigh(
+      modbusResult[9] as number,
+    );
+    partialData.Heatpump_CompressorRating = (modbusResult[10] as number) * 0.01;
+    partialData.Heatpump_ActualHeatingCapacity = convertToTemperature(
+      modbusResult[11] as number,
+    );
+    partialData.Heatpump_InverterActualPower = modbusResult[12] as number;
+    partialData.Heatpump_CurrentCop = (modbusResult[13] as number) * 0.01;
+    partialData.Heatpump_RequestType =
+      heatpump_request_state[modbusResult[15] as number] || "UNKNOWN";
+    partialData.Heatpump_RequestFlowTemp = convertToTemperature(
+      modbusResult[16] as number,
+    );
+    partialData.Heatpump_RequestReturnTemp = convertToTemperature(
+      modbusResult[17] as number,
+    );
+    partialData.Heatpump_RequestTempDiff = convertToTemperature(
+      modbusResult[18] as number,
+    );
+
+    partialData.Heatpump_ElectricEnergy =
+      int32ToNumber(modbusResult[21] as number, modbusResult[20] as number) /
+      1000;
+    partialData.Heatpump_HeatEnergy =
+      int32ToNumber(modbusResult[23] as number, modbusResult[22] as number) /
+      1000;
+    return partialData;
+  }
+
+  private async getBoilerData(): Promise<Partial<HeatpumpData>> {
+    const partialData: Partial<HeatpumpData> = {};
+    const modbusResult = await this.readRegister(2001, 3);
+    partialData.Boiler_State =
+      boiler_state[modbusResult[0] as number] || "UNKNOWN";
+    partialData.Boiler_HighTemp = convertToTemperature(
+      modbusResult[1] as number,
+    );
+    partialData.Boiler_LowTemp = convertToTemperature(
+      modbusResult[2] as number,
+    );
+    return partialData;
+  }
+
+  private async getBufferData(): Promise<Partial<HeatpumpData>> {
+    const partialData: Partial<HeatpumpData> = {};
+    const modbusResult = await this.readRegister(3001, 3);
+    partialData.Buffer_State =
+      buffer_state[modbusResult[0] as number] || "UNKNOWN";
+    partialData.Buffer_HighTemp = convertToTemperature(
+      modbusResult[1] as number,
+    );
+    partialData.Buffer_LowTemp = convertToTemperature(
+      modbusResult[2] as number,
+    );
+    return partialData;
+  }
+
+  private async getHeatingCurcuitData(): Promise<Partial<HeatpumpData>> {
+    const partialData: Partial<HeatpumpData> = {};
+    const modbusResult_circ1 = await this.readRegister(5001, 2);
+    const modbusResult_circ2 = await this.readRegister(5101, 2);
+    partialData.HeatingCircuit_1_State =
+      heating_circuit_state[modbusResult_circ1[0] as number] || "UNKNOWN";
+    partialData.HeatingCircuit_1_FlowTemp = convertToTemperature(
+      modbusResult_circ1[1] as number,
+    );
+    partialData.HeatingCircuit_2_State =
+      heating_circuit_state[modbusResult_circ2[0] as number] || "UNKNOWN";
+    partialData.HeatingCircuit_2_FlowTemp = convertToTemperature(
+      modbusResult_circ2[1] as number,
+    );
+    return partialData;
   }
 }
 

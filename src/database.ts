@@ -1,7 +1,6 @@
-import { heatpump, type HeatpumpRecord } from "./schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "./schema"; // Deine
+import * as schema from "./schema.js"; // Deine
 
 export class Database {
   private db: ReturnType<typeof drizzle>;
@@ -13,13 +12,13 @@ export class Database {
     this.db = drizzle(pool, { schema });
   }
 
-  async insertHeatpumpRecord(data: HeatpumpRecord): Promise<void> {
-    await this.db.insert(heatpump).values(data);
+  async insertHeatpumpRecord(data: schema.HeatpumpRecord): Promise<void> {
+    await this.db.insert(schema.heatpump).values(data);
   }
 
-  async insertHeatpumpRecords(data: HeatpumpRecord[]): Promise<void> {
+  async insertHeatpumpRecords(data: schema.HeatpumpRecord[]): Promise<void> {
     if (data.length === 0) return;
-    await this.db.insert(heatpump).values(data);
+    await this.db.insert(schema.heatpump).values(data);
   }
 }
 

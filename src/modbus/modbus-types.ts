@@ -1,10 +1,3 @@
-export interface ModBusField<T = number | string> {
-  adress: number;
-  convert: (this: ModBusField<T>) => T;
-  rawValue?: number | number[] | null;
-  length?: number;
-}
-
 export interface HeatpumpData {
   event_timestamp: Date;
   Ambient_State: string;

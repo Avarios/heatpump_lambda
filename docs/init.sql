@@ -34,7 +34,7 @@ CREATE TABLE heatpump (
     Heatpump_State varchar(50) NOT NULL,
     Heatpump_VolumeSink double precision NOT NULL,
     Heatpump_VolumeSourceFlow double precision NOT NULL,
-    External_Power DOUBLE precision NOT NULL
+    External_Power DOUBLE precision
 );
 
 -- Create index on heatpump table
@@ -148,6 +148,105 @@ FROM (
         heatpump_current_electric e
         CROSS JOIN heatpump_current_heat h
     );
+
+CREATE OR REPLACE VIEW heatpump_external_power AS
+SELECT 
+  COALESCE(
+    SUM(external_power * 30.0 / 3600000.0),  -- Deine SUMME (falls Daten)
+    0
+  ) + 
+  (  -- Deine funktionierende Delta-Query
+    (SELECT heatpump_electricenergy
+     FROM heatpump
+     WHERE event_timestamp <= CURRENT_TIMESTAMP 
+     AND external_power IS NULL
+     ORDER BY event_timestamp DESC LIMIT 1
+    ) - (
+     SELECT heatpump_electricenergy
+     FROM heatpump
+     WHERE event_timestamp >= DATE_TRUNC('year', CURRENT_TIMESTAMP)
+	 AND external_power IS NULL
+     ORDER BY event_timestamp ASC LIMIT 1
+    )
+  ) AS total_ext_power
+FROM heatpump 
+WHERE event_timestamp >= DATE_TRUNC('year', CURRENT_TIMESTAMP)
+  AND event_timestamp < DATE_TRUNC('year', CURRENT_TIMESTAMP) + INTERVAL '1 year'
+  AND external_power IS NOT NULL;
+
+
+CREATE OR REPLACE FUNCTION heatpump_heatenergy_function(
+  start_timestamp timestamptz DEFAULT DATE_TRUNC('year', CURRENT_TIMESTAMP),
+  end_timestamp timestamptz DEFAULT CURRENT_TIMESTAMP
+)
+RETURNS TABLE (
+  start_value double precision,
+  end_value double precision,
+  heatpump_difference double precision
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    (SELECT heatpump_heatenergy
+     FROM heatpump
+     WHERE event_timestamp >= start_timestamp
+     ORDER BY event_timestamp ASC
+     LIMIT 1) AS start_value,
+    
+    (SELECT heatpump_heatenergy
+     FROM heatpump
+     WHERE event_timestamp <= end_timestamp
+     ORDER BY event_timestamp DESC
+     LIMIT 1) AS end_value,
+    
+    COALESCE(
+      (SELECT heatpump_heatenergy
+       FROM heatpump
+       WHERE event_timestamp <= end_timestamp
+       ORDER BY event_timestamp DESC LIMIT 1
+      ), 0
+    ) - COALESCE(
+      (SELECT heatpump_heatenergy
+       FROM heatpump
+       WHERE event_timestamp >= start_timestamp
+       ORDER BY event_timestamp ASC LIMIT 1
+      ), 0
+    ) AS heatpump_difference;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION heatpump_external_function(
+  start_timestamp timestamptz DEFAULT DATE_TRUNC('year', CURRENT_TIMESTAMP),
+  end_timestamp timestamptz DEFAULT DATE_TRUNC('year', CURRENT_TIMESTAMP) + INTERVAL '1 year'
+)
+RETURNS double precision AS $$
+BEGIN
+  RETURN COALESCE(
+    (SELECT SUM(external_power * 30.0 / 3600000.0)
+     FROM heatpump 
+     WHERE event_timestamp >= start_timestamp
+       AND event_timestamp < end_timestamp
+       AND external_power IS NOT NULL),
+    0
+  ) + 
+  COALESCE(
+    (SELECT heatpump_electricenergy
+     FROM heatpump
+     WHERE event_timestamp <= end_timestamp 
+       AND external_power IS NULL
+     ORDER BY event_timestamp DESC LIMIT 1
+    ), 0
+  ) - 
+  COALESCE(
+    (SELECT heatpump_electricenergy
+     FROM heatpump
+     WHERE event_timestamp >= start_timestamp
+     ORDER BY event_timestamp ASC LIMIT 1
+    ), 0
+  );
+END;
+$$ LANGUAGE plpgsql;
 
 
 DO

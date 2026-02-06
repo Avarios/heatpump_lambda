@@ -81,7 +81,7 @@ export const heatpump = pgTable(
     heatpump_volume_source_flow: doublePrecision(
       "heatpump_volumesourceflow",
     ).notNull(),
-    external_energy_data: doublePrecision("external_power").notNull(),
+    external_energy_data: doublePrecision("external_power"),
   },
   (t) => [index("idx_eventtime").on(t.event_timestamp)],
 );

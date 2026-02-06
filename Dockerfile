@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json* yarn.lock* bun.lockb* ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY tsconfig.json ./
@@ -28,7 +28,7 @@ RUN apk add --no-cache dumb-init
 COPY package.json package-lock.json* yarn.lock* bun.lockb* ./
 
 # Install production dependencies only
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
@@ -42,9 +42,6 @@ USER nodejs
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "console.log('ok')" || exit 1
-
-# Use dumb-init to handle signals
-ENTRYPOINT ["/usr/sbin/dumb-init", "--"]
 
 # Start application
 CMD ["node", "dist/main.js"]

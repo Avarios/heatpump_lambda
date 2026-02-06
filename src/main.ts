@@ -1,7 +1,7 @@
-import ModbusClient from "./modbus/modbus";
-import { getShellyConsumptionData } from "./REST/shelly";
-import { Database } from "./database";
-import { mapHeatpumpDataToRecord } from "./mapper";
+import ModbusClient from "./modbus/modbus.js";
+import { getShellyConsumptionData } from "./REST/shelly.js";
+import { Database } from "./database.js";
+import { mapHeatpumpDataToRecord } from "./mapper.js";
 
 function loadConfig(): {
   modbusHost: string;
@@ -16,33 +16,68 @@ function loadConfig(): {
   const modbusHost = process.env["MODBUS_HOST"] || "192.168.50.112";
   const modbusPortStr = process.env["MODBUS_PORT"] || "502";
   const modbusTimeoutStr = process.env["MODBUS_TIMEOUT"] || "2000";
-  const shellyIP = process.env["SHELLY_IP"] || "";
-  const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"] || "";
-  const intervalTimeStr = process.env["INTERVAL_TIME"] || "30";
+  const shellyIP = process.env["SHELLY_IP"] || "192.168.50.134";
+  const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"] || "postgresql://fetcher:qwasyx@192.168.68.68:5432/smarthome_test";
+  const intervalTimeStr = process.env["INTERVAL_TIME"] || "300";
 
-  if (!modbusHost || typeof modbusHost !== "string" || modbusHost.trim() === "") {
-    errors.push("MODBUS_HOST must be a non-empty string (default: 192.168.50.112)");
+  let intervalTime: number = 0; // Default to 5 minutes in milliseconds
+  let modbusPort: number = 0;
+  let modbusTimeout: number = 0;
+  let modHost: string = "";
+  let shellyIp: string = "";
+  let dbConnectionString: string = "";
+
+  if (
+    !modbusHost ||
+    typeof modbusHost !== "string" ||
+    modbusHost.trim() === ""
+  ) {
+    errors.push(
+      "MODBUS_HOST must be a non-empty string (default: 192.168.50.112)",
+    );
+  } else {
+    modHost = modbusHost;
   }
 
-  const modbusPort = parseInt(modbusPortStr, 10);
-  if (isNaN(modbusPort) || modbusPort < 1 || modbusPort > 65535) {
+  if (!modbusPortStr || typeof modbusPortStr !== "string") {
     errors.push(
       "MODBUS_PORT must be a valid port number between 1 and 65535 (default: 502)",
     );
+  } else {
+    modbusPort = parseInt(modbusPortStr, 10);
+    if (isNaN(modbusPort) || modbusPort < 1 || modbusPort > 65535) {
+      errors.push(
+        "MODBUS_PORT must be a valid port number between 1 and 65535 (default: 502)",
+      );
+    }
   }
 
-  const modbusTimeout = parseInt(modbusTimeoutStr, 10);
-  if (isNaN(modbusTimeout) || modbusTimeout < 100 || modbusTimeout > 30000) {
+  if (!modbusTimeoutStr || typeof modbusTimeoutStr !== "string") {
     errors.push(
       "MODBUS_TIMEOUT must be a number between 100 and 30000 milliseconds (default: 2000)",
     );
+  } else {
+     modbusTimeout = parseInt(modbusTimeoutStr, 10);
+    if (isNaN(modbusTimeout) || modbusTimeout < 100 || modbusTimeout > 30000) {
+      errors.push(
+        "MODBUS_TIMEOUT must be a number between 100 and 30000 milliseconds (default: 2000)",
+      );
+    }
   }
 
   if (!shellyIP || typeof shellyIP !== "string" || shellyIP.trim() === "") {
-    errors.push("SHELLY_IP must be a non-empty string (default: 192.168.50.134)");
+    errors.push(
+      "SHELLY_IP must be a non-empty string (default: 192.168.50.134)",
+    );
+  } else {
+    shellyIp = shellyIP;
   }
 
-  if (!databaseConnectionString || typeof databaseConnectionString !== "string") {
+
+  if (
+    !databaseConnectionString ||
+    typeof databaseConnectionString !== "string"
+  ) {
     errors.push(
       "DATBASE_CONNECTION_STRING environment variable is required. Format: postgresql://username:password@host:port/database",
     );
@@ -50,13 +85,20 @@ function loadConfig(): {
     errors.push(
       "DATBASE_CONNECTION_STRING must start with 'postgresql://' (PostgreSQL connection string)",
     );
+  } else {
+    dbConnectionString = databaseConnectionString;
   }
 
-  const intervalTime = (parseInt(intervalTimeStr, 10)) * 1000;
-  if (isNaN(intervalTime) || intervalTime < 30 || intervalTime > 3600) {
+  if (!intervalTimeStr || typeof intervalTimeStr !== "string") {
     errors.push(
-      "INTERVAL_TIME must be a number between 30 and 3600 seconds",
+      "INTERVAL_TIME must be a number between 30 and 3600 seconds (default: 300)",
     );
+  } else {
+    intervalTime = parseInt(intervalTimeStr, 10);
+    if (isNaN(intervalTime) || intervalTime < 30 || intervalTime > 3600) {
+      errors.push("INTERVAL_TIME must be a number between 30 and 3600 seconds");
+    }
+    intervalTime = intervalTime * 1000;
   }
 
   if (errors.length > 0) {
@@ -66,11 +108,11 @@ function loadConfig(): {
   }
 
   return {
-    modbusHost,
+    modbusHost: modHost,
     modbusPort,
     modbusTimeout,
-    shellyIP,
-    databaseConnectionString,
+    shellyIP: shellyIp,
+    databaseConnectionString: dbConnectionString,
     intervalTime,
   };
 }
@@ -86,8 +128,6 @@ const executeAction = async (
   const modbusData = await modbus.fetchHeatpumpData();
   console.log("Fetched Modbus Data:", modbusData);
   console.log("Fetched Shelly Data:", shellyData);
-
-  // Map data and insert into database
   const heatpumpRecord = mapHeatpumpDataToRecord(modbusData, shellyData);
   await database.insertHeatpumpRecord(heatpumpRecord);
   console.log("Data successfully inserted into database");
@@ -115,6 +155,7 @@ async function main(): Promise<void> {
   }
   const database = new Database(config.databaseConnectionString);
   await executeAction(modbus, database);
+
   const intervalId = setInterval(async () => {
     try {
       await executeAction(modbus, database);
@@ -124,13 +165,15 @@ async function main(): Promise<void> {
   }, config.intervalTime);
 
   process.on("SIGTERM", () => {
-    console.log("SIGTERM signal received: closing HTTP server");
+    console.log("SIGTERM signal received: closing application");
+    modbus.disconnect();
     clearInterval(intervalId);
     process.exit(0);
   });
 
   process.on("SIGINT", () => {
-    console.log("SIGINT signal received: closing HTTP server");
+    console.log("SIGINT signal received: closing application");
+    modbus.disconnect();
     clearInterval(intervalId);
     process.exit(0);
   });
