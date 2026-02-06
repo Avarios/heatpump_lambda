@@ -2,6 +2,7 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 
 interface HealthStatus {
   status: "healthy" | "unhealthy";
+  isHealthy: boolean;
   timestamp: string;
   checks: {
     database: boolean;
@@ -75,6 +76,7 @@ export class HealthMonitor {
 
     return {
       status: isHealthy ? "healthy" : "unhealthy",
+      isHealthy : isHealthy,
       timestamp: now.toISOString(),
       checks: {
         database: this.isDatabaseConnected,

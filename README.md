@@ -240,6 +240,7 @@ curl http://localhost:3000/health
 ```json
 {
   "status": "healthy",
+  "isHealthy": true,
   "timestamp": "2024-01-15T10:30:00.000Z",
   "checks": {
     "database": true,
@@ -257,6 +258,7 @@ curl http://localhost:3000/health
 ```json
 {
   "status": "unhealthy",
+  "isHealthy": false,
   "timestamp": "2024-01-15T10:30:00.000Z",
   "checks": {
     "database": true,
