@@ -148,7 +148,7 @@ const executeAction = async (
     console.log("Fetched Shelly Data:", shellyData);
   }
   const heatpumpRecord = mapHeatpumpDataToRecord(modbusData, shellyData);
-  //await database.insertHeatpumpRecord(heatpumpRecord);
+  await database.insertHeatpumpRecord(heatpumpRecord);
   console.log("Data successfully inserted into database");
 };
 
