@@ -13,12 +13,12 @@ function loadConfig(): {
 } {
   const errors: string[] = [];
 
-  const modbusHost = process.env["MODBUS_HOST"] || "192.168.50.112";
-  const modbusPortStr = process.env["MODBUS_PORT"] || "502";
-  const modbusTimeoutStr = process.env["MODBUS_TIMEOUT"] || "2000";
-  const shellyIP = process.env["SHELLY_IP"] || "192.168.50.134";
-  const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"] || "postgresql://fetcher:qwasyx@192.168.68.68:5432/smarthome_test";
-  const intervalTimeStr = process.env["INTERVAL_TIME"] || "300";
+  const modbusHost = process.env["MODBUS_HOST"];
+  const modbusPortStr = process.env["MODBUS_PORT"];
+  const modbusTimeoutStr = process.env["MODBUS_TIMEOUT"];
+  const shellyIP = process.env["SHELLY_IP"];
+  const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"] ;
+  const intervalTimeStr = process.env["INTERVAL_TIME"];
 
   let intervalTime: number = 0; // Default to 5 minutes in milliseconds
   let modbusPort: number = 0;
@@ -94,7 +94,7 @@ function loadConfig(): {
       "INTERVAL_TIME must be a number between 30 and 3600 seconds (default: 300)",
     );
   } else {
-    intervalTime = parseInt(intervalTimeStr, 10);
+    intervalTime = parseInt(intervalTimeStr);
     if (isNaN(intervalTime) || intervalTime < 30 || intervalTime > 3600) {
       errors.push("INTERVAL_TIME must be a number between 30 and 3600 seconds");
     }
