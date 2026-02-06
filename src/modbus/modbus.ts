@@ -93,7 +93,6 @@ export class ModbusClient {
         ...heatingCircuitData,
         ...ambientData,
       };
-      console.log("Finished individual field reads:", data);
       return data as HeatpumpData;
     } catch (error) {
       console.error("Error fetching heatpump data:", error);

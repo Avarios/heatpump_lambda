@@ -189,6 +189,8 @@ DATABASE_CONNECTION_STRING=postgresql://YOURUSER:PASS@DNS_OR_IP:PORT/YOURDATABAS
 
 # Data Collection Interval
 INTERVAL_TIME=30                  # Polling interval in seconds (30-3600)
+VERBOSE_LOGGING=false            # Enable verbose logging
+
 ```
 
 ### Configuration Validation
