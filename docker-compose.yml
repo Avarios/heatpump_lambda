@@ -6,7 +6,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: heatpump_fetcher
+    ports:
+      - "${HEALTH_PORT:-3000}:3000"
     environment:
+      # Health Check Configuration
+      HEALTH_PORT: ${HEALTH_PORT:-3000}
       # Modbus Configuration
       MODBUS_HOST: ${MODBUS_HOST:-192.168.50.112}
       MODBUS_PORT: ${MODBUS_PORT:-502}

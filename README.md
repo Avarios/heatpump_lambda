@@ -45,6 +45,8 @@ Perfect for homeowners, energy consultants, and smart home enthusiasts who want 
 - ⚡ **External Power Tracking** - Integration with Shelly 3EM Pro for accurate power consumption
 - 🧮 **COP Calculation** - Automatic coefficient of performance tracking via SQL views
 - 🐳 **Docker Ready** - Containerized deployment with docker-compose
+- 🔒 **Production Hardened** - Non-root user, health checks, signal handling
+- 🏥 **Health Monitoring** - HTTP endpoint for external monitoring of application status
 - 📈 **Time-Series Optimized** - Indexed PostgreSQL schema for fast queries
 - 🛡️ **Error Resilient** - Automatic reconnection and graceful error handling
 
@@ -184,13 +186,17 @@ MODBUS_TIMEOUT=2000               # Connection timeout in ms (100-30000)
 # Shelly 3EM Pro Configuration
 SHELLY_IP=192.168.50.134          # IP address of Shelly energy meter
 
+# Health Check Configuration
+HEALTH_PORT=3000                  # HTTP health check endpoint port (default: 3000)
+
 # PostgreSQL Database
 DATABASE_CONNECTION_STRING=postgresql://YOURUSER:PASS@DNS_OR_IP:PORT/YOURDATABASE
 
 # Data Collection Interval
 INTERVAL_TIME=30                  # Polling interval in seconds (30-3600)
-VERBOSE_LOGGING=false            # Enable verbose logging
 
+# Logging
+VERBOSE_LOGGING=false             # Enable verbose logging (true/false)
 ```
 
 ### Configuration Validation
@@ -225,7 +231,52 @@ docker-compose down
 
 ### Monitoring
 
-**Check application health:**
+**Check application health via HTTP endpoint:**
+```bash
+curl http://localhost:3000/health
+```
+
+**Health response (200 OK when healthy):**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "checks": {
+    "database": true,
+    "modbus": true,
+    "lastFetch": {
+      "success": true,
+      "timestamp": "2024-01-15T10:29:45.000Z",
+      "ageSeconds": 15
+    }
+  }
+}
+```
+
+**Unhealthy response (503 Service Unavailable):**
+```json
+{
+  "status": "unhealthy",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "checks": {
+    "database": true,
+    "modbus": false,
+    "lastFetch": {
+      "success": false,
+      "timestamp": "2024-01-15T10:25:00.000Z",
+      "ageSeconds": 300
+    }
+  }
+}
+```
+
+The application is considered unhealthy if:
+- Database connection is lost
+- MODBUS connection is lost
+- Last data fetch failed
+- Last successful fetch is older than 2 minutes
+
+**Check Docker container health:**
 ```bash
 docker inspect --format='{{.State.Health.Status}}' heatpump_fetcher
 ```
@@ -380,16 +431,28 @@ Check logs for configuration errors or missing environment variables.
 
 ### Debug Mode
 
-Enable verbose logging:
+Enable verbose logging in `.env`:
+```bash
+VERBOSE_LOGGING=true
+```
+
+View logs:
 ```bash
 docker-compose logs -f --tail=100 app
 ```
 
 ### Health Check
 
-The container includes a health check that runs every 30 seconds:
+The container includes an HTTP health check that runs every 30 seconds:
 ```bash
+# Check container health status
 docker inspect heatpump_fetcher | grep -A 10 Health
+
+# Test health endpoint directly
+curl http://localhost:3000/health
+
+# Use with monitoring tools (Prometheus, Nagios, etc.)
+wget --spider http://localhost:3000/health
 ```
 
 ---
@@ -409,6 +472,7 @@ heatpump_lambda/
 │   ├── database.ts             # Database operations
 │   ├── mapper.ts               # Data transformation
 │   ├── schema.ts               # Drizzle ORM schema
+│   ├── health.ts               # Health monitoring endpoint
 │   └── main.ts                 # Application entry point
 ├── docs/
 │   ├── init.sql                # Database initialization
@@ -475,4 +539,4 @@ For issues, questions, or suggestions:
 
 ---
 
-**Made with ❤️ for smart home automation and energy efficiency**
+**Made with ❤️ for smart home automation**

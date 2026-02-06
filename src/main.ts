@@ -2,6 +2,7 @@ import ModbusClient from "./modbus/modbus.js";
 import { getShellyConsumptionData } from "./REST/shelly.js";
 import { Database } from "./database.js";
 import { mapHeatpumpDataToRecord } from "./mapper.js";
+import { HealthMonitor } from "./health.js";
 
 const originalLog = console.log.bind(console);
 console.log = (...args: any[]) => {
@@ -23,6 +24,7 @@ function loadConfig(): {
   databaseConnectionString: string;
   intervalTime: number;
   verboseLogging: boolean;
+  healthPort: number;
 } {
   const errors: string[] = [];
 
@@ -33,14 +35,16 @@ function loadConfig(): {
   const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"];
   const intervalTimeStr = process.env["INTERVAL_TIME"];
   const verboseLoggingStr = process.env["VERBOSE_LOGGING"] || "false";
+  const healthPortStr = process.env["HEALTH_PORT"] || "3000";
 
-  let intervalTime: number = 0; // Default to 5 minutes in milliseconds
+  let intervalTime: number = 0;
   let modbusPort: number = 0;
   let modbusTimeout: number = 0;
   let modHost: string = "";
   let shellyIp: string = "";
   let dbConnectionString: string = "";
   let verboseLogging: boolean = verboseLoggingStr === "true";
+  let healthPort: number = parseInt(healthPortStr, 10);
 
   if (
     !modbusHost ||
@@ -129,6 +133,7 @@ function loadConfig(): {
     databaseConnectionString: dbConnectionString,
     intervalTime,
     verboseLogging,
+    healthPort,
   };
 }
 
@@ -137,19 +142,26 @@ const config = loadConfig();
 const executeAction = async (
   modbus: ModbusClient,
   database: Database,
+  healthMonitor: HealthMonitor,
 ): Promise<void> => {
   console.log(`Executing scheduled action...${new Date().toISOString()}`);
   console.log("Fetching data from Modbus and Shelly...");
-  const shellyData = await getShellyConsumptionData(config.shellyIP);
-  const modbusData = await modbus.fetchHeatpumpData();
-  console.log("Data fetched successfully");
-  if (config.verboseLogging) {
-    console.log("Fetched Modbus Data:", modbusData);
-    console.log("Fetched Shelly Data:", shellyData);
+  try {
+    const shellyData = await getShellyConsumptionData(config.shellyIP);
+    const modbusData = await modbus.fetchHeatpumpData();
+    console.log("Data fetched successfully");
+    if (config.verboseLogging) {
+      console.log("Fetched Modbus Data:", modbusData);
+      console.log("Fetched Shelly Data:", shellyData);
+    }
+    const heatpumpRecord = mapHeatpumpDataToRecord(modbusData, shellyData);
+    await database.insertHeatpumpRecord(heatpumpRecord);
+    console.log("Data successfully inserted into database");
+    healthMonitor.updateLastFetch(true);
+  } catch (error) {
+    healthMonitor.updateLastFetch(false);
+    throw error;
   }
-  const heatpumpRecord = mapHeatpumpDataToRecord(modbusData, shellyData);
-  await database.insertHeatpumpRecord(heatpumpRecord);
-  console.log("Data successfully inserted into database");
 };
 
 async function main(): Promise<void> {
@@ -158,6 +170,9 @@ async function main(): Promise<void> {
   );
   console.log(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
   console.log(`Shelly IP: ${config.shellyIP}`);
+
+  const healthMonitor = new HealthMonitor(config.healthPort);
+  healthMonitor.start();
 
   const modbus = new ModbusClient({
     host: config.modbusHost,
@@ -168,16 +183,19 @@ async function main(): Promise<void> {
 
   try {
     await modbus.connect();
+    healthMonitor.updateModbusStatus(true);
   } catch (error) {
     console.error("Failed to connect to Modbus TCP server:", error);
+    healthMonitor.updateModbusStatus(false);
     return;
   }
   const database = new Database(config.databaseConnectionString);
-  await executeAction(modbus, database);
+  healthMonitor.updateDatabaseStatus(true);
+  await executeAction(modbus, database, healthMonitor);
 
   const intervalId = setInterval(async () => {
     try {
-      await executeAction(modbus, database);
+      await executeAction(modbus, database, healthMonitor);
     } catch (error) {
       console.error("Error executing action:", error);
     }
@@ -185,6 +203,7 @@ async function main(): Promise<void> {
 
   process.on("SIGTERM", () => {
     console.log("SIGTERM signal received: closing application");
+    healthMonitor.stop();
     modbus.disconnect();
     clearInterval(intervalId);
     process.exit(0);
@@ -192,6 +211,7 @@ async function main(): Promise<void> {
 
   process.on("SIGINT", () => {
     console.log("SIGINT signal received: closing application");
+    healthMonitor.stop();
     modbus.disconnect();
     clearInterval(intervalId);
     process.exit(0);
