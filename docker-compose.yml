@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: heatpump_fetcher
     ports:
-      - "${HEALTH_PORT:-3000}:3000"
+      - "${HEALTH_PORT:-3000}:${HEALTH_PORT:-3000}"
     environment:
       # Health Check Configuration
       HEALTH_PORT: ${HEALTH_PORT:-3000}
