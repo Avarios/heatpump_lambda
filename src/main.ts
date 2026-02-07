@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   console.log(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
   console.log(`Shelly IP: ${config.shellyIP}`);
 
-  const healthMonitor = new HealthMonitor(config.healthPort);
+  const healthMonitor = new HealthMonitor(3000); //internally listen to 3000
   healthMonitor.start();
 
   const modbus = new ModbusClient({

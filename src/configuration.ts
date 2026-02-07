@@ -6,7 +6,6 @@ export type Configuration = {
   databaseConnectionString: string;
   intervalTime: number;
   verboseLogging: boolean;
-  healthPort: number;
 };
 
 export const loadConfiguration = (): Configuration => {
@@ -19,7 +18,6 @@ export const loadConfiguration = (): Configuration => {
   const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"];
   const intervalTimeStr = process.env["INTERVAL_TIME"];
   const verboseLoggingStr = process.env["VERBOSE_LOGGING"] || "false";
-  const healthPortStr = process.env["HEALTH_PORT"] || "3000";
 
   let intervalTime: number = 0;
   let modbusPort: number = 0;
@@ -28,7 +26,6 @@ export const loadConfiguration = (): Configuration => {
   let shellyIp: string = "";
   let dbConnectionString: string = "";
   let verboseLogging: boolean = verboseLoggingStr === "true";
-  let healthPort: number = parseInt(healthPortStr, 10);
 
   if (
     !modbusHost ||
@@ -117,6 +114,5 @@ export const loadConfiguration = (): Configuration => {
     databaseConnectionString: dbConnectionString,
     intervalTime,
     verboseLogging,
-    healthPort,
   };
 };
