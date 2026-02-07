@@ -40,8 +40,8 @@ export class HealthMonitor {
       }
     });
 
-    this.server.listen(this.port, () => {
-      console.log(`Health check endpoint available at http://localhost:${this.port}/health`);
+    this.server.listen(this.port, '0.0.0.0', () => {
+      console.log(`Health check endpoint available at http://0.0.0.0:${this.port}/health`);
     });
   }
 
