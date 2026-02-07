@@ -1,6 +1,6 @@
 import { ErrResult, OkResult, type Result } from "../result.js";
 import type { ShellyEMStatus } from "./types.js";
-
+//TODO:shelly -> Just extract one number
 export const getShellyConsumptionData = async (
   ipAdress: string,
 ): Promise<Result<ShellyEMStatus, { reason: string }>> => {

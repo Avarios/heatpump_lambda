@@ -14,6 +14,7 @@ export const executeAction = async (
 ): Promise<ActionResult<undefined, ActioResultError>> => {
   console.log(`Executing scheduled action...${new Date().toISOString()}`);
   console.log("Fetching data from Modbus and Shelly...");
+  //TODO: external data curently only shelly: make it exchanngeable
   const [shellyErr, shellyData] = await getShellyConsumptionData(
     config.shellyIP,
   );

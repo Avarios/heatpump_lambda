@@ -1,3 +1,4 @@
+//TODO: make heating circutis configurable
 export interface HeatpumpData {
   event_timestamp: Date;
   Ambient_State: string;

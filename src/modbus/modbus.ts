@@ -14,7 +14,7 @@ import {
   int32ToNumber,
 } from "./lambda-states.js";
 import { ErrResult, OkResult, type Result } from "../result.js";
-
+//TODO: make heating circutis configurable
 export class ModbusClient {
   private client: ModbusRTU;
   private config: ModbusConfig;
