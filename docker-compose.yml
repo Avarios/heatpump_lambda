@@ -44,4 +44,3 @@ volumes:
 networks:
   smarthome:
     external: true
-    name: smarthome
