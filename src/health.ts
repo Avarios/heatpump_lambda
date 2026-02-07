@@ -7,6 +7,7 @@ interface HealthStatus {
   checks: {
     database: boolean;
     modbus: boolean;
+    shelly: boolean;
     lastFetch: {
       success: boolean;
       timestamp: string | null;
@@ -20,6 +21,7 @@ export class HealthMonitor {
   private lastFetchSuccess: boolean = false;
   private isDatabaseConnected: boolean = false;
   private isModbusConnected: boolean = false;
+  private isShellyConnected: boolean = false;
   private server: ReturnType<typeof createServer> | null = null;
 
   constructor(private port: number = 3000) {}
@@ -53,6 +55,10 @@ export class HealthMonitor {
     this.isDatabaseConnected = connected;
   }
 
+  updateShellyStatus(connected: boolean): void {
+    this.isShellyConnected = connected;
+  }
+
   updateModbusStatus(connected: boolean): void {
     this.isModbusConnected = connected;
   }
@@ -81,6 +87,7 @@ export class HealthMonitor {
       checks: {
         database: this.isDatabaseConnected,
         modbus: this.isModbusConnected,
+        shelly: this.isShellyConnected,
         lastFetch: {
           success: this.lastFetchSuccess,
           timestamp: this.lastFetchTime?.toISOString() || null,

@@ -49,6 +49,9 @@ Perfect for homeowners, energy consultants, and smart home enthusiasts who want 
 - 🏥 **Health Monitoring** - HTTP endpoint for external monitoring of application status
 - 📈 **Time-Series Optimized** - Indexed PostgreSQL schema for fast queries
 - 🛡️ **Error Resilient** - Automatic reconnection and graceful error handling
+- 🎯 **Robust Error Handling** - Type-safe Result and ActionResult patterns for predictable error flows
+- 🔌 **MODBUS Reconnection** - Automatic reconnection handling for MODBUS connection failures
+- 🎨 **Color Logger** - Enhanced console output with color-coded timestamps for better log readability
 
 ---
 
@@ -470,11 +473,16 @@ heatpump_lambda/
 │   │   ├── modbus-types.ts     # Type definitions
 │   │   └── lambda-states.ts    # State mappings
 │   ├── REST/
-│   │   └── shelly.ts           # Shelly API client
+│   │   ├── shelly.ts           # Shelly API client
+│   │   └── types.ts            # Shelly type definitions
+│   ├── actionExecuter.ts       # Action execution logic
+│   ├── configuration.ts        # Configuration loading and validation
 │   ├── database.ts             # Database operations
-│   ├── mapper.ts               # Data transformation
-│   ├── schema.ts               # Drizzle ORM schema
 │   ├── health.ts               # Health monitoring endpoint
+│   ├── logger.ts               # Color logger implementation
+│   ├── mapper.ts               # Data transformation
+│   ├── result.ts               # Result and ActionResult types
+│   ├── schema.ts               # Drizzle ORM schema
 │   └── main.ts                 # Application entry point
 ├── docs/
 │   ├── init.sql                # Database initialization

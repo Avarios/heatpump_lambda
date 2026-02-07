@@ -13,6 +13,7 @@ import {
   heatpump_states,
   int32ToNumber,
 } from "./lambda-states.js";
+import { ErrResult, OkResult, type Result } from "../result.js";
 
 export class ModbusClient {
   private client: ModbusRTU;
@@ -44,6 +45,14 @@ export class ModbusClient {
     console.log(
       `Connected to Modbus TCP server at ${this.config.host}:${this.config.port}`,
     );
+    this.client.on("close",() => {
+      console.log("Disconnected from Modbus TCP server");
+      this.connected = false;
+    });
+    this.client.on("error",() => {
+      console.log("Error state modbus");
+      this.connected = false;
+    });
   }
 
   async disconnect(): Promise<void> {
@@ -56,20 +65,24 @@ export class ModbusClient {
     console.log("Disconnected from Modbus TCP server");
   }
 
+  onDisconnectOrError(callback: () => void) {
+    this.client.on("close", callback);
+    this.client.on("error", callback);
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
   private async readRegister(
     adress: number,
     length: number,
   ): Promise<Array<number>> {
-    try {
-      const result = await this.client.readHoldingRegisters(adress, length);
-      return result.data.map((x) => x);
-    } catch (error) {
-      console.error(`Error reading adress ${adress}:`, error);
-      throw error;
-    }
+    const result = await this.client.readHoldingRegisters(adress, length);
+    return result.data.map((x) => x);
   }
 
-  async fetchHeatpumpData(): Promise<HeatpumpData> {
+  async fetchHeatpumpData(): Promise<Result<HeatpumpData, { reason: string }>> {
     if (!this.connected) {
       this.connect();
     }
@@ -93,10 +106,10 @@ export class ModbusClient {
         ...heatingCircuitData,
         ...ambientData,
       };
-      return data as HeatpumpData;
+      return OkResult(data as HeatpumpData);
     } catch (error) {
       console.error("Error fetching heatpump data:", error);
-      throw error;
+      return ErrResult({ reason: "Failed to fetch heatpump data" });
     }
   }
 

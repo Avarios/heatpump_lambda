@@ -1,170 +1,39 @@
 import ModbusClient from "./modbus/modbus.js";
-import { getShellyConsumptionData } from "./REST/shelly.js";
 import { Database } from "./database.js";
-import { mapHeatpumpDataToRecord } from "./mapper.js";
 import { HealthMonitor } from "./health.js";
+import { executeAction } from "./actionExecuter.js";
+import { loadConfiguration } from "./configuration.js";
+import { initiateLogger } from "./logger.js";
 
-const originalLog = console.log.bind(console);
-console.log = (...args: any[]) => {
-  const now = new Date();
-  const time = now.toLocaleTimeString("de-DE", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  originalLog(`[${time}]`, ...args);
-};
-
-function loadConfig(): {
-  modbusHost: string;
-  modbusPort: number;
-  modbusTimeout: number;
-  shellyIP: string;
-  databaseConnectionString: string;
-  intervalTime: number;
-  verboseLogging: boolean;
-  healthPort: number;
-} {
-  const errors: string[] = [];
-
-  const modbusHost = process.env["MODBUS_HOST"];
-  const modbusPortStr = process.env["MODBUS_PORT"];
-  const modbusTimeoutStr = process.env["MODBUS_TIMEOUT"];
-  const shellyIP = process.env["SHELLY_IP"];
-  const databaseConnectionString = process.env["DATBASE_CONNECTION_STRING"];
-  const intervalTimeStr = process.env["INTERVAL_TIME"];
-  const verboseLoggingStr = process.env["VERBOSE_LOGGING"] || "false";
-  const healthPortStr = process.env["HEALTH_PORT"] || "3000";
-
-  let intervalTime: number = 0;
-  let modbusPort: number = 0;
-  let modbusTimeout: number = 0;
-  let modHost: string = "";
-  let shellyIp: string = "";
-  let dbConnectionString: string = "";
-  let verboseLogging: boolean = verboseLoggingStr === "true";
-  let healthPort: number = parseInt(healthPortStr, 10);
-
-  if (
-    !modbusHost ||
-    typeof modbusHost !== "string" ||
-    modbusHost.trim() === ""
-  ) {
-    errors.push(
-      "MODBUS_HOST must be a non-empty string (default: 192.168.50.112)",
-    );
-  } else {
-    modHost = modbusHost;
-  }
-
-  if (!modbusPortStr || typeof modbusPortStr !== "string") {
-    errors.push(
-      "MODBUS_PORT must be a valid port number between 1 and 65535 (default: 502)",
-    );
-  } else {
-    modbusPort = parseInt(modbusPortStr, 10);
-    if (isNaN(modbusPort) || modbusPort < 1 || modbusPort > 65535) {
-      errors.push(
-        "MODBUS_PORT must be a valid port number between 1 and 65535 (default: 502)",
+const handleDisconnect = async (healthMonitor:HealthMonitor, modbus:ModbusClient) => {
+    let retries = 10;
+    while (retries >= 0) {
+      console.log("Modbus connection lost");
+      healthMonitor.updateModbusStatus(false);
+      console.log(
+        `Reconnecting to Modbus in try ${retries} but waiting 120 seks to do so...`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 120 * 1000));
+      try {
+        await modbus.connect();
+        console.log("Reconnected to Modbus");
+        healthMonitor.updateModbusStatus(true);
+        retries = -1;
+      } catch (error) {
+        if(retries === 0) {
+          console.error("reconnect failed, panic");
+          process.exit(-1);
+        }
+        retries--;
+        healthMonitor.updateModbusStatus(false);
+      }
     }
+    
   }
-
-  if (!modbusTimeoutStr || typeof modbusTimeoutStr !== "string") {
-    errors.push(
-      "MODBUS_TIMEOUT must be a number between 100 and 30000 milliseconds (default: 2000)",
-    );
-  } else {
-    modbusTimeout = parseInt(modbusTimeoutStr, 10);
-    if (isNaN(modbusTimeout) || modbusTimeout < 100 || modbusTimeout > 30000) {
-      errors.push(
-        "MODBUS_TIMEOUT must be a number between 100 and 30000 milliseconds (default: 2000)",
-      );
-    }
-  }
-
-  if (!shellyIP || typeof shellyIP !== "string" || shellyIP.trim() === "") {
-    errors.push(
-      "SHELLY_IP must be a non-empty string (default: 192.168.50.134)",
-    );
-  } else {
-    shellyIp = shellyIP;
-  }
-
-  if (
-    !databaseConnectionString ||
-    typeof databaseConnectionString !== "string"
-  ) {
-    errors.push(
-      "DATBASE_CONNECTION_STRING environment variable is required. Format: postgresql://username:password@host:port/database",
-    );
-  } else if (!databaseConnectionString.startsWith("postgresql://")) {
-    errors.push(
-      "DATBASE_CONNECTION_STRING must start with 'postgresql://' (PostgreSQL connection string)",
-    );
-  } else {
-    dbConnectionString = databaseConnectionString;
-  }
-
-  if (!intervalTimeStr || typeof intervalTimeStr !== "string") {
-    errors.push(
-      "INTERVAL_TIME must be a number between 30 and 3600 seconds (default: 300)",
-    );
-  } else {
-    intervalTime = parseInt(intervalTimeStr);
-    if (isNaN(intervalTime) || intervalTime < 30 || intervalTime > 3600) {
-      errors.push("INTERVAL_TIME must be a number between 30 and 3600 seconds");
-    }
-    intervalTime = intervalTime * 1000;
-  }
-
-  if (errors.length > 0) {
-    throw new Error(
-      `Configuration validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`,
-    );
-  }
-
-  return {
-    modbusHost: modHost,
-    modbusPort,
-    modbusTimeout,
-    shellyIP: shellyIp,
-    databaseConnectionString: dbConnectionString,
-    intervalTime,
-    verboseLogging,
-    healthPort,
-  };
-}
-
-const config = loadConfig();
-
-const executeAction = async (
-  modbus: ModbusClient,
-  database: Database,
-  healthMonitor: HealthMonitor,
-): Promise<void> => {
-  console.log(`Executing scheduled action...${new Date().toISOString()}`);
-  console.log("Fetching data from Modbus and Shelly...");
-  try {
-    const shellyData = await getShellyConsumptionData(config.shellyIP);
-    const modbusData = await modbus.fetchHeatpumpData();
-    console.log("Data fetched successfully");
-    if (config.verboseLogging) {
-      console.log("Fetched Modbus Data:", modbusData);
-      console.log("Fetched Shelly Data:", shellyData);
-    }
-    const heatpumpRecord = mapHeatpumpDataToRecord(modbusData, shellyData);
-    await database.insertHeatpumpRecord(heatpumpRecord);
-    console.log("Data successfully inserted into database");
-    healthMonitor.updateLastFetch(true);
-  } catch (error) {
-    healthMonitor.updateLastFetch(false);
-    throw error;
-  }
-};
 
 async function main(): Promise<void> {
+  const config = loadConfiguration();
+  initiateLogger();
   console.log(
     `Starting main function with ${config.intervalTime / 1000}-second interval...`,
   );
@@ -181,6 +50,8 @@ async function main(): Promise<void> {
     timeout: config.modbusTimeout,
   });
 
+  modbus.onDisconnectOrError(async () => await handleDisconnect(healthMonitor,modbus));
+
   try {
     await modbus.connect();
     healthMonitor.updateModbusStatus(true);
@@ -189,13 +60,38 @@ async function main(): Promise<void> {
     healthMonitor.updateModbusStatus(false);
     return;
   }
-  const database = new Database(config.databaseConnectionString);
+  let database = new Database(config.databaseConnectionString);
   healthMonitor.updateDatabaseStatus(true);
-  await executeAction(modbus, database, healthMonitor);
 
   const intervalId = setInterval(async () => {
     try {
-      await executeAction(modbus, database, healthMonitor);
+      if (modbus.isConnected()) { //Execute only if connected, else retry progress in place
+        const [actionErr] = await executeAction(
+          modbus,
+          database,
+          healthMonitor,
+          config,
+        );
+        if (actionErr) {
+          console.error("Action execution failed:", actionErr.reason);
+          switch (actionErr.affectedModule) {
+            case "modbus":
+              //When modbus fails try to disconnect and reconnect
+              modbus.disconnect();
+              await new Promise((resolve) => setTimeout(resolve, 5000)); // wait for 5 seconds before reconnecting
+              modbus.connect();
+              break;
+            case "database":
+              database = new Database(config.databaseConnectionString);
+              break;
+            case "mapper":
+              healthMonitor.updateLastFetch(false);
+              break;
+          }
+        }
+      } else{
+        console.error("Modbus is disconnected, retry in progress or failed");
+      }
     } catch (error) {
       console.error("Error executing action:", error);
     }

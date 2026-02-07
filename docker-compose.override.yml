@@ -1,0 +1,9 @@
+version: '3.8'
+
+# This override file is used when the external 'smarthome' network doesn't exist
+# To use: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+networks:
+  smarthome:
+    external: false
+    driver: bridge

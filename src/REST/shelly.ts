@@ -1,25 +1,16 @@
-interface ShellyEMStatus {
-  id: number;
-  a_current?: number;
-  a_act_power?: number;
-  b_current?: number;
-  b_act_power?: number;
-  c_current?: number;
-  c_act_power?: number;
-  total_act_power?: number; // Gesamtleistung in W
-  total_current?: number;
-  errors?: string[];
-}
+import { ErrResult, OkResult, type Result } from "../result.js";
+import type { ShellyEMStatus } from "./types.js";
 
 export const getShellyConsumptionData = async (
   ipAdress: string,
-): Promise<ShellyEMStatus> => {
+): Promise<Result<ShellyEMStatus, { reason: string }>> => {
   try {
     const url = `http://${ipAdress}/rpc/EM.GetStatus?id=0`;
     const response = await fetch(url);
     const data: ShellyEMStatus = await response.json();
-    return data;
+    return OkResult(data);
   } catch (error) {
-    throw new Error("Fehler beim Abrufen der Shelly EM-Daten: " + error);
+    console.error("Error fetching Shelly EM data:", error);
+    return ErrResult({ reason: "Failed to fetch Shelly EM data" });
   }
 };
