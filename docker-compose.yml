@@ -29,7 +29,7 @@ services:
       NODE_ENV: production
     networks:
       - smarthome
-    restart: unless-stopped
+    restart: always
     # Optional: Add logging configuration
     logging:
       driver: "json-file"
