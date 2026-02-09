@@ -56,11 +56,9 @@ export class ModbusClient {
   }
 
   async disconnect(): Promise<void> {
-    if (!this.connected) {
-      return;
-    }
-
-    await this.client.close();
+    console.log("Disconnecting from Modbus TCP server...");
+    this.client.close();
+    this.client.destroy();
     this.connected = false;
     console.log("Disconnected from Modbus TCP server");
   }
@@ -70,7 +68,7 @@ export class ModbusClient {
     this.client.on("error", callback);
   }
 
-  isConnected(): boolean {
+  get isConnected(): boolean {
     return this.connected;
   }
 

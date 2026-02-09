@@ -4,32 +4,10 @@ import { HealthMonitor } from "./health.js";
 import { executeAction } from "./actionExecuter.js";
 import { loadConfiguration } from "./configuration.js";
 import { initiateLogger } from "./logger.js";
-
-const handleDisconnect = async (healthMonitor:HealthMonitor, modbus:ModbusClient) => {
-    let retries = 10;
-    while (retries >= 0) {
-      console.log("Modbus connection lost");
-      healthMonitor.updateModbusStatus(false);
-      console.log(
-        `Reconnecting to Modbus in try ${retries} but waiting 120 seks to do so...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 120 * 1000));
-      try {
-        await modbus.connect();
-        console.log("Reconnected to Modbus");
-        healthMonitor.updateModbusStatus(true);
-        retries = -1;
-      } catch (error) {
-        if(retries === 0) {
-          console.error("reconnect failed, panic");
-          process.exit(-1);
-        }
-        retries--;
-        healthMonitor.updateModbusStatus(false);
-      }
-    }
-    
-  }
+import {
+  handleModbusDisconnect,
+  handleDatabaseDisconnect,
+} from "./errorHandler.js";
 
 async function main(): Promise<void> {
   const config = loadConfiguration();
@@ -50,7 +28,9 @@ async function main(): Promise<void> {
     timeout: config.modbusTimeout,
   });
 
-  modbus.onDisconnectOrError(async () => await handleDisconnect(healthMonitor,modbus));
+  modbus.onDisconnectOrError(
+    async () => await handleModbusDisconnect(healthMonitor, modbus),
+  );
 
   try {
     await modbus.connect();
@@ -61,11 +41,15 @@ async function main(): Promise<void> {
     return;
   }
   let database = new Database(config.databaseConnectionString);
+  database.handleError(
+    async () => await handleDatabaseDisconnect(healthMonitor, database),
+  );
   healthMonitor.updateDatabaseStatus(true);
 
   const intervalId = setInterval(async () => {
     try {
-      if (modbus.isConnected()) { //Execute only if connected, else retry progress in place
+      if (modbus.isConnected) {
+        //Execute only if connected, else retry progress in place
         const [actionErr] = await executeAction(
           modbus,
           database,
@@ -76,20 +60,17 @@ async function main(): Promise<void> {
           console.error("Action execution failed:", actionErr.reason);
           switch (actionErr.affectedModule) {
             case "modbus":
-              //When modbus fails try to disconnect and reconnect
-              modbus.disconnect();
-              await new Promise((resolve) => setTimeout(resolve, 5000)); // wait for 5 seconds before reconnecting
-              modbus.connect();
+              await handleModbusDisconnect(healthMonitor, modbus);
               break;
             case "database":
-              database = new Database(config.databaseConnectionString);
+              await handleDatabaseDisconnect(healthMonitor, database);
               break;
             case "mapper":
               healthMonitor.updateLastFetch(false);
               break;
           }
         }
-      } else{
+      } else {
         console.error("Modbus is disconnected, retry in progress or failed");
       }
     } catch (error) {
