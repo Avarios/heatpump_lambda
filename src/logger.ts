@@ -3,6 +3,8 @@ const green = '\\x1b[32m';
 const reset = '\\x1b[0m';
 
 let verboseLogging = false;
+//TODO: Logleve definitions error, info, verbose -> Also change in every log call
+//TODO: Log into file 
 
 export const initiateLogger = (verbose: boolean = false) => {
   verboseLogging = verbose;
