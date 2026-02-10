@@ -82,7 +82,7 @@ const startTimer = (): NodeJS.Timeout => {
 
 async function main(): Promise<void> {
   config = loadConfiguration();
-  initiateLogger();
+  initiateLogger(config.verboseLogging);
   console.log(
     `Starting main function with ${config.intervalTime / 1000}-second interval...`,
   );

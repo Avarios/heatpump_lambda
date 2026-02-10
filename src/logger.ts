@@ -1,10 +1,16 @@
 const red = '\\x1b[31m';
 const green = '\\x1b[32m';
 const reset = '\\x1b[0m';
-//TODO: Log into File 
-export const initiateLogger = () => {
+
+let verboseLogging = false;
+
+export const initiateLogger = (verbose: boolean = false) => {
+  verboseLogging = verbose;
+  
   const originalLog = console.log.bind(console);
   console.log = (...args: any[]) => {
+    if (!verboseLogging) return;
+    
     const now = new Date();
     const time = now.toLocaleTimeString("de-DE", {
       hour12: false,
