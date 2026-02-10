@@ -8,48 +8,37 @@ import {
   handleModbusDisconnect,
   handleDatabaseDisconnect,
 } from "./errorHandler.js";
+import type { Configuration } from "./configuration.js";
+import type { ModbusConfig } from "./modbus/modbus-types.js";
 
-async function main(): Promise<void> {
-  const config = loadConfiguration();
-  initiateLogger();
-  console.log(
-    `Starting main function with ${config.intervalTime / 1000}-second interval...`,
-  );
-  console.log(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
-  console.log(`Shelly IP: ${config.shellyIP}`);
+let modbus: ModbusClient;
+let database: Database;
+let healthMonitor: HealthMonitor;
+let config: Configuration;
+let modbusConfig: ModbusConfig;
+let intervalId: NodeJS.Timeout | null = null;
 
-  const healthMonitor = new HealthMonitor(3000);
-  healthMonitor.start();
-
-  const modbus = new ModbusClient({
-    host: config.modbusHost,
-    port: config.modbusPort,
-    unitId: 1,
-    timeout: config.modbusTimeout,
-  });
-
-  modbus.onDisconnectOrError(
-    async () => await handleModbusDisconnect(healthMonitor, modbus),
-  );
-
-  try {
-    await modbus.connect();
-    healthMonitor.updateModbusStatus(true);
-  } catch (error) {
-    console.error("Failed to connect to Modbus TCP server:", error);
-    healthMonitor.updateModbusStatus(false);
-    return;
+const handleModbusReconnect = async () => {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
   }
-  let database = new Database(config.databaseConnectionString);
-  database.handleError(
-    async () => await handleDatabaseDisconnect(healthMonitor, database),
-  );
-  healthMonitor.updateDatabaseStatus(true);
+  
+  const [modbusErr, newModbus] = await handleModbusDisconnect(healthMonitor, modbusConfig);
+  if (!modbusErr && newModbus) {
+    modbus = newModbus;
+    modbus.onDisconnectOrError(handleModbusReconnect);
+    intervalId = startTimer();
+  } 
+  if(modbusErr) {
+    process.exit(-1);
+  }
+};
 
-  const intervalId = setInterval(async () => {
+const startTimer = (): NodeJS.Timeout => {
+  const id = setInterval(async () => {
     try {
       if (modbus.isConnected) {
-        //Execute only if connected, else retry progress in place
         const [actionErr] = await executeAction(
           modbus,
           database,
@@ -58,15 +47,26 @@ async function main(): Promise<void> {
         );
         if (actionErr) {
           console.error("Action execution failed:", actionErr.reason);
+
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          
           switch (actionErr.affectedModule) {
             case "modbus":
-              await handleModbusDisconnect(healthMonitor, modbus);
+              await handleModbusReconnect();
               break;
             case "database":
-              await handleDatabaseDisconnect(healthMonitor, database);
+              const [dbError,dbClient] = await handleDatabaseDisconnect(healthMonitor,config.databaseConnectionString);
+              if (dbClient && !dbError) {
+                database = new Database(config.databaseConnectionString);
+                intervalId = startTimer();
+              }
               break;
             case "mapper":
               healthMonitor.updateLastFetch(false);
+              intervalId = startTimer();
               break;
           }
         }
@@ -77,12 +77,49 @@ async function main(): Promise<void> {
       console.error("Error executing action:", error);
     }
   }, config.intervalTime);
+  return id;
+};
+
+async function main(): Promise<void> {
+  config = loadConfiguration();
+  initiateLogger();
+  console.log(
+    `Starting main function with ${config.intervalTime / 1000}-second interval...`,
+  );
+  console.log(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
+  console.log(`Shelly IP: ${config.shellyIP}`);
+
+  healthMonitor = new HealthMonitor(3000);
+  healthMonitor.start();
+  
+  modbusConfig = {
+    host: config.modbusHost,
+    port: config.modbusPort,
+    timeout: config.modbusTimeout,
+  };
+  modbus = new ModbusClient(modbusConfig);
+
+  modbus.onDisconnectOrError(handleModbusReconnect);
+
+  try {
+    await modbus.connect();
+    healthMonitor.updateModbusStatus(true);
+  } catch (error) {
+    console.error("Failed to connect to Modbus TCP server:", error);
+    healthMonitor.updateModbusStatus(false);
+    return;
+  }
+  
+  database = new Database(config.databaseConnectionString);
+  healthMonitor.updateDatabaseStatus(true);
+
+  intervalId = startTimer();
 
   process.on("SIGTERM", () => {
     console.log("SIGTERM signal received: closing application");
     healthMonitor.stop();
     modbus.disconnect();
-    clearInterval(intervalId);
+    if (intervalId) clearInterval(intervalId);
     process.exit(0);
   });
 
@@ -90,7 +127,7 @@ async function main(): Promise<void> {
     console.log("SIGINT signal received: closing application");
     healthMonitor.stop();
     modbus.disconnect();
-    clearInterval(intervalId);
+    if (intervalId) clearInterval(intervalId);
     process.exit(0);
   });
 }

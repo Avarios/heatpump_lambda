@@ -1,18 +1,14 @@
-import type Database from "./database";
-import type { HealthMonitor } from "./health";
-import type ModbusClient from "./modbus/modbus";
+import Database from "./database.js";
+import type { HealthMonitor } from "./health.js";
+import ModbusClient from "./modbus/modbus.js";
+import type { ModbusConfig } from "./modbus/modbus-types.js";
 
-let isReconnecting = false;
+
 //TODO: Externalise the reconnect timer and counter
 export const handleModbusDisconnect = async (
   healthMonitor: HealthMonitor,
-  modbus: ModbusClient,
-): Promise<boolean> => {
-  if (isReconnecting) {
-    console.log("MODBUS: Reconnection to MODBUS already in progress, skipping...");
-    return false;
-  }
-  isReconnecting = true;
+  modbusConfig: ModbusConfig,
+): Promise<Result<ModbusClient, ErrorHandlerResult>> => {
   let retries = 10;
   while (retries >= 0) {
     console.log("MODBUS: connection lost");
@@ -22,56 +18,72 @@ export const handleModbusDisconnect = async (
     );
     await new Promise((resolve) => setTimeout(resolve, 60 * 1000));
     try {
-      await modbus.connect();
+      const modbusClient = new ModbusClient(modbusConfig);
+      await modbusClient.connect();
       console.log("MODBUS: Reconnected to Modbus");
       healthMonitor.updateModbusStatus(true);
-      isReconnecting = false;
-      return true;
+      retries = -1;
+      return ModbusReconnectedResult(modbusClient);
     } catch (error) {
       if (retries === 0) {
         console.error("MODBUS: reconnect failed, panic");
-        process.exit(-1);
+        retries = -1;
       }
       retries--;
       healthMonitor.updateModbusStatus(false);
     }
   }
-  isReconnecting = false;
-  return false;
+  return FailedResult("MODBUS: Modbus reconnect failed after 10 tries");
 };
 
 export const handleDatabaseDisconnect = async (
   healthMonitor: HealthMonitor,
-  database: Database,
-): Promise<boolean> => {
-  if (isReconnecting) {
-    console.log("DATABASE: Reconnection to DB already in progress, skipping...");
-    return false;
-  }
-  isReconnecting = true;
+  connectionString:string
+): Promise<Result<Database, ErrorHandlerResult>> => {
   let retries = 10;
   while (retries >= 0) {
+   let dbClient = new Database(connectionString);
     console.log("DATABASE: connection lost");
-    healthMonitor.updateModbusStatus(false);
+    healthMonitor.updateDatabaseStatus(false);
     console.log(
       `DATABASE: Reconnecting in try ${retries} but waiting 60 seks to do so...`,
     );
     await new Promise((resolve) => setTimeout(resolve, 60 * 1000));
     try {
-      await database.connect();
+      await dbClient.connect();
       console.log("DATABASE: Reconnected");
-      healthMonitor.updateModbusStatus(true);
-      isReconnecting = false;
-      return true;
+      healthMonitor.updateDatabaseStatus(true);
+      return DataBaseReconnectedResult(dbClient);
     } catch (error) {
       if (retries === 0) {
         console.error("DATABASE: reconnect failed, panic");
         process.exit(-1);
       }
       retries--;
-      healthMonitor.updateModbusStatus(false);
+      healthMonitor.updateDatabaseStatus(false);
     }
   }
-  isReconnecting = false;
-  return false;
+  return FailedResult("DATABASE: Database reconnect failed after 10 tries");
 };
+
+export type ErrorHandlerResult = {  reason: string; };
+export type Result<S, E extends ErrorHandlerResult> = [E, null] | [null, S];
+
+export const FailedResult = (reason: string): Result<
+  never,
+  ErrorHandlerResult
+> => [{ reason }, null];
+
+export const ModbusReconnectedResult = (
+  modbus: ModbusClient,
+): Result<ModbusClient, ErrorHandlerResult> => [
+  null,
+  modbus,
+];
+
+export const DataBaseReconnectedResult = (
+  database: Database,
+): Result<Database, ErrorHandlerResult> => [
+  null,
+  database,
+];

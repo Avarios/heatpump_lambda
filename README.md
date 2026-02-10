@@ -48,9 +48,10 @@ Perfect for homeowners, energy consultants, and smart home enthusiasts who want 
 - 🔒 **Production Hardened** - Non-root user, health checks, signal handling
 - 🏥 **Health Monitoring** - HTTP endpoint for external monitoring of application status
 - 📈 **Time-Series Optimized** - Indexed PostgreSQL schema for fast queries
-- 🛡️ **Error Resilient** - Automatic reconnection and graceful error handling
-- 🎯 **Robust Error Handling** - Type-safe Result and ActionResult patterns for predictable error flows
-- 🔌 **MODBUS Reconnection** - Automatic reconnection handling for MODBUS connection failures
+- 🛡️ **Error Resilient** - Automatic reconnection with retry logic (10 attempts @ 60s intervals)
+- 🎯 **Robust Error Handling** - Type-safe Result patterns with timer stop/restart on failures
+- 🔌 **Smart Reconnection** - Prevents concurrent reconnection attempts with state management
+- 🔄 **Self-Healing** - Automatic timer restart after successful reconnection
 - 🎨 **Color Logger** - Enhanced console output with color-coded timestamps for better log readability
 
 ---
@@ -58,30 +59,59 @@ Perfect for homeowners, energy consultants, and smart home enthusiasts who want 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐         MODBUS TCP          ┌──────────────────┐
-│  Lambda Heat    │◄────────(Port 502)──────────┤                  │
-│  Pump           │                              │                  │
-└─────────────────┘                              │   Application    │
-                                                 │   Container      │
-┌─────────────────┐         HTTP REST           │  (TypeScript)    │
-│  Shelly 3EM     │◄────────(Port 80)───────────┤                  │
-│  Pro            │                              │                  │
-└─────────────────┘                              └────────┬─────────┘
-                                                          │
-                                                          │ SQL
-                                                          ▼
-                                                 ┌──────────────────┐
-                                                 │   PostgreSQL     │
-                                                 │   Database       │
-                                                 └──────────────────┘
+┌─────────────────┐         MODBUS TCP          ┌──────────────────────────────┐
+│  Lambda Heat    │◄────────(Port 502)──────────┤                              │
+│  Pump           │                              │   Application Container      │
+└─────────────────┘                              │   (TypeScript)               │
+                                                 │                              │
+┌─────────────────┐         HTTP REST           │  ┌────────────────────────┐  │
+│  Shelly 3EM     │◄────────(Port 80)───────────┤  │  Interval Timer        │  │
+│  Pro            │                              │  │  (30-3600s)            │  │
+└─────────────────┘                              │  └──────────┬─────────────┘  │
+                                                 │             │                │
+                                                 │             ▼                │
+                                                 │  ┌────────────────────────┐  │
+                                                 │  │  Action Executer       │  │
+                                                 │  │  - Fetch MODBUS        │  │
+                                                 │  │  - Fetch Shelly        │  │
+                                                 │  │  - Map & Validate      │  │
+                                                 │  └──────────┬─────────────┘  │
+                                                 │             │                │
+                                                 │             ▼                │
+                                                 │  ┌────────────────────────┐  │
+                                                 │  │  Error Handler         │  │
+                                                 │  │  - Stop Timer          │  │
+                                                 │  │  - Reconnect (10x)     │  │
+                                                 │  │  - Restart Timer       │  │
+                                                 │  └────────────────────────┘  │
+                                                 └──────────────┬───────────────┘
+                                                                │ SQL Insert
+                                                                ▼
+                                                 ┌──────────────────────────────┐
+                                                 │   PostgreSQL Database        │
+                                                 │   - Time-series data         │
+                                                 │   - COP calculations         │
+                                                 └──────────────────────────────┘
 ```
 
 **Data Flow:**
-1. Application polls Lambda heat pump via MODBUS TCP every N seconds
-2. Simultaneously fetches power consumption from Shelly 3EM Pro via REST API
-3. Maps and validates data according to schema
-4. Inserts timestamped record into PostgreSQL
-5. SQL views automatically calculate COP and energy deltas
+1. **Timer triggers** - Application polls every N seconds (configurable 30-3600s)
+2. **Action Executer runs** - Fetches data from Lambda heat pump (MODBUS TCP) and Shelly 3EM Pro (REST API)
+3. **Data mapping** - Validates and transforms raw data according to schema
+4. **Database insert** - Stores timestamped record in PostgreSQL
+5. **Error handling** - On connection failure:
+   - Timer stops immediately
+   - Error handler attempts reconnection (10 retries with 60s wait)
+   - New connection instances created
+   - Timer restarts with fresh connections
+6. **Health monitoring** - HTTP endpoint reports system status
+7. **SQL views** - Automatically calculate COP and energy deltas
+
+**Error Recovery Flow:**
+```
+Error Detected → Stop Timer → Reconnect (10x @ 60s) → Success? → Restart Timer
+                                                    → Failure? → Exit Process
+```
 
 ---
 
@@ -477,13 +507,14 @@ heatpump_lambda/
 │   │   └── types.ts            # Shelly type definitions
 │   ├── actionExecuter.ts       # Action execution logic
 │   ├── configuration.ts        # Configuration loading and validation
-│   ├── database.ts             # Database operations
+│   ├── database.ts             # Database operations with error handling
+│   ├── errorHandler.ts         # Reconnection logic with retry mechanism
 │   ├── health.ts               # Health monitoring endpoint
 │   ├── logger.ts               # Color logger implementation
 │   ├── mapper.ts               # Data transformation
 │   ├── result.ts               # Result and ActionResult types
 │   ├── schema.ts               # Drizzle ORM schema
-│   └── main.ts                 # Application entry point
+│   └── main.ts                 # Application entry point with timer management
 ├── docs/
 │   ├── init.sql                # Database initialization
 │   └── modbus.md               # MODBUS documentation

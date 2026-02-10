@@ -37,6 +37,5 @@ export interface HeatpumpData {
 export interface ModbusConfig {
   host: string;
   port: number;
-  unitId: number;
   timeout: number;
 }

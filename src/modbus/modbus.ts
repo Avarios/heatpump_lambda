@@ -24,8 +24,7 @@ export class ModbusClient {
     this.client = new ModbusRTU();
     this.config = {
       ...{
-        unitId: 1,
-        timeout: 5000,
+        timeout: 20000,
       },
       ...config,
     };
@@ -40,7 +39,8 @@ export class ModbusClient {
       port: this.config.port,
     });
 
-    this.client.setID(this.config.unitId);
+    const clientId = Math.floor(Math.random() * 10) + 1
+    this.client.setID(clientId);
     this.connected = true;
     console.log(
       `Connected to Modbus TCP server at ${this.config.host}:${this.config.port}`,
