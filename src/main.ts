@@ -83,11 +83,11 @@ const startTimer = (): NodeJS.Timeout => {
 async function main(): Promise<void> {
   config = loadConfiguration();
   initiateLogger(config.verboseLogging);
-  console.log(
+  console.info(
     `Starting main function with ${config.intervalTime / 1000}-second interval...`,
   );
-  console.log(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
-  console.log(`Shelly IP: ${config.shellyIP}`);
+  console.info(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
+  console.info(`Shelly IP: ${config.shellyIP}`);
 
   healthMonitor = new HealthMonitor(3000);
   healthMonitor.start();
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   intervalId = startTimer();
 
   process.on("SIGTERM", () => {
-    console.log("SIGTERM signal received: closing application");
+    console.info("SIGTERM signal received: closing application");
     healthMonitor.stop();
     modbus.disconnect();
     if (intervalId) clearInterval(intervalId);
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   });
 
   process.on("SIGINT", () => {
-    console.log("SIGINT signal received: closing application");
+    console.info("SIGINT signal received: closing application");
     healthMonitor.stop();
     modbus.disconnect();
     if (intervalId) clearInterval(intervalId);
