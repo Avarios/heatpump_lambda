@@ -44,8 +44,8 @@ export const mapData = (
       heatpump_volume_sink: modbusData.Heatpump_VolumeSink,
       heatpump_volume_source_flow: modbusData.Heatpump_VolumeSourceFlow,
       external_energy_data: shellyData
-        ? (shellyData.total_act_power ?? null)
-        : null,
+        ? (shellyData.total_act_power ?? 0)
+        : 0,
     };
     return OkResult(record);
   } catch (error) {
