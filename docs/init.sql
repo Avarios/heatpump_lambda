@@ -249,6 +249,81 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- FUNCTION: public.calculate_real_cop(timestamp with time zone, timestamp with time zone)
+
+DROP FUNCTION IF EXISTS calculate_real_cop(timestamp with time zone, timestamp with time zone);
+
+CREATE OR REPLACE FUNCTION calculate_real_cop(
+	p_start timestamp with time zone,
+	p_end timestamp with time zone)
+    RETURNS TABLE(period_start timestamp with time zone, period_end timestamp with time zone, duration_minutes numeric, heat_energy_kwh numeric, internal_electric_kwh numeric, real_electric_kwh numeric, internal_cop numeric, real_cop numeric, sample_count bigint) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+    DECLARE
+      v_heat_start    DOUBLE PRECISION;
+      v_heat_end      DOUBLE PRECISION;
+      v_elec_start    DOUBLE PRECISION;
+      v_elec_end      DOUBLE PRECISION;
+      v_real_wh       DOUBLE PRECISION := 0;
+      v_samples       BIGINT;
+    BEGIN
+      -- Get cumulative energy counters at the boundary closest to p_start and p_end
+      SELECT heatpump_heatenergy, heatpump_electricenergy
+        INTO v_heat_start, v_elec_start
+        FROM heatpump
+       WHERE event_timestamp >= p_start
+       ORDER BY event_timestamp ASC
+       LIMIT 1;
+
+      SELECT heatpump_heatenergy, heatpump_electricenergy
+        INTO v_heat_end, v_elec_end
+        FROM heatpump
+       WHERE event_timestamp <= p_end
+       ORDER BY event_timestamp DESC
+       LIMIT 1;
+
+      -- Trapezoidal integration of external_power (W) over time -> Wh
+      SELECT
+        SUM(
+          (w_curr + w_next) / 2.0
+          * EXTRACT(EPOCH FROM (t_next - t_curr)) / 3600.0
+        ),
+        COUNT(*)
+      INTO v_real_wh, v_samples
+      FROM (
+        SELECT
+          event_timestamp                                            AS t_curr,
+          external_power                                            AS w_curr,
+          LEAD(event_timestamp) OVER (ORDER BY event_timestamp)    AS t_next,
+          LEAD(external_power)  OVER (ORDER BY event_timestamp)    AS w_next
+        FROM heatpump
+        WHERE event_timestamp BETWEEN p_start AND p_end
+          AND external_power IS NOT NULL
+      ) pairs
+      WHERE t_next IS NOT NULL;
+
+      RETURN QUERY SELECT
+        p_start,
+        p_end,
+        ROUND(EXTRACT(EPOCH FROM (p_end - p_start)) / 60.0, 1)::NUMERIC,
+        ROUND((v_heat_end - v_heat_start)::NUMERIC, 4),
+        ROUND((v_elec_end - v_elec_start)::NUMERIC, 4),
+        ROUND((v_real_wh / 1000.0)::NUMERIC, 4),
+        CASE WHEN (v_elec_end - v_elec_start) > 0
+             THEN ROUND(((v_heat_end - v_heat_start) / (v_elec_end - v_elec_start))::NUMERIC, 3)
+             ELSE NULL END,
+        CASE WHEN v_real_wh > 0
+             THEN ROUND(((v_heat_end - v_heat_start) / (v_real_wh / 1000.0))::NUMERIC, 3)
+             ELSE NULL END,
+        v_samples;
+    END;
+    
+$BODY$;
+
 DO
 $$
 BEGIN
