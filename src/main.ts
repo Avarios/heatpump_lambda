@@ -17,20 +17,28 @@ let healthMonitor: HealthMonitor;
 let config: Configuration;
 let modbusConfig: ModbusConfig;
 let intervalId: NodeJS.Timeout | null = null;
+let isReconnecting = false;
 
 const handleModbusReconnect = async () => {
+  if (isReconnecting) {
+    console.log("MODBUS: reconnect already in progress, ignoring duplicate trigger");
+    return;
+  }
+  isReconnecting = true;
+
   if (intervalId) {
     clearInterval(intervalId);
     intervalId = null;
   }
-  
+
   const [modbusErr, newModbus] = await handleModbusDisconnect(healthMonitor, modbusConfig);
+  isReconnecting = false;
   if (!modbusErr && newModbus) {
     modbus = newModbus;
     modbus.onDisconnectOrError(handleModbusReconnect);
     intervalId = startTimer();
-  } 
-  if(modbusErr) {
+  }
+  if (modbusErr) {
     process.exit(-1);
   }
 };

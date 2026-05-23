@@ -82,9 +82,6 @@ export class ModbusClient {
 
   async fetchHeatpumpData(): Promise<Result<HeatpumpData, { reason: string }>> {
     if (!this.connected) {
-      this.connect();
-    }
-    if (!this.connected) {
       throw new Error("Modbus client is not connected");
     }
 
