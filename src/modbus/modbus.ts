@@ -39,17 +39,17 @@ export class ModbusClient {
       port: this.config.port,
     });
 
-    const clientId = Math.floor(Math.random() * 10) + 1
+    const clientId = Math.floor(Math.random() * 10) + 1;
     this.client.setID(clientId);
     this.connected = true;
     console.log(
       `Connected to Modbus TCP server at ${this.config.host}:${this.config.port}`,
     );
-    this.client.on("close",() => {
+    this.client.on("close", () => {
       console.log("Disconnected from Modbus TCP server");
       this.connected = false;
     });
-    this.client.on("error",() => {
+    this.client.on("error", () => {
       console.log("Error state modbus");
       this.connected = false;
     });
@@ -81,6 +81,9 @@ export class ModbusClient {
   }
 
   async fetchHeatpumpData(): Promise<Result<HeatpumpData, { reason: string }>> {
+    if (!this.connected) {
+      await this.connect();
+    }
     if (!this.connected) {
       throw new Error("Modbus client is not connected");
     }

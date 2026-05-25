@@ -1,4 +1,5 @@
 import ModbusClient from "./modbus/modbus.js";
+import E3dcClient from "./e3dc/e3dc-client.js";
 import { Database } from "./database.js";
 import { HealthMonitor } from "./health.js";
 import { executeAction } from "./actionExecuter.js";
@@ -7,17 +8,32 @@ import { initiateLogger } from "./logger.js";
 import {
   handleModbusDisconnect,
   handleDatabaseDisconnect,
+  // handleE3dcDisconnect,
 } from "./errorHandler.js";
 import type { Configuration } from "./configuration.js";
 import type { ModbusConfig } from "./modbus/modbus-types.js";
 
 let modbus: ModbusClient;
+let e3dc: E3dcClient | null = null;
 let database: Database;
 let healthMonitor: HealthMonitor;
 let config: Configuration;
 let modbusConfig: ModbusConfig;
 let intervalId: NodeJS.Timeout | null = null;
 let isReconnecting = false;
+//let isE3dcReconnecting = false;
+
+/* const handleE3dcReconnect = async () => {
+  if (isE3dcReconnecting || !config.e3dc) return;
+  isE3dcReconnecting = true;
+  const [err, newE3dc] = await handleE3dcDisconnect(healthMonitor, config.e3dc);
+  isE3dcReconnecting = false;
+  if (!err && newE3dc) {
+    e3dc = newE3dc;
+    e3dc.onDisconnectOrError(handleE3dcReconnect);
+  }
+  // E3DC failure is non-fatal: the interval keeps running with e3dc data absent.
+}; */
 
 const handleModbusReconnect = async () => {
   if (isReconnecting) {
@@ -52,6 +68,7 @@ const startTimer = (): NodeJS.Timeout => {
           database,
           healthMonitor,
           config,
+          e3dc,
         );
         if (actionErr) {
           console.error("Action execution failed:", actionErr.reason);
@@ -96,6 +113,7 @@ async function main(): Promise<void> {
   );
   console.info(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
   console.info(`Shelly IP: ${config.shellyIP}`);
+  console.info(`E3DC: ${config.e3dc ? `${config.e3dc.host}:${config.e3dc.port}` : "disabled"}`);
 
   healthMonitor = new HealthMonitor(3000);
   healthMonitor.start();
@@ -121,23 +139,32 @@ async function main(): Promise<void> {
   database = new Database(config.databaseConnectionString);
   healthMonitor.updateDatabaseStatus(true);
 
+   /* if (config.e3dc) {
+    e3dc = new E3dcClient(config.e3dc);
+    e3dc.onDisconnectOrError(handleE3dcReconnect);
+    try {
+      await e3dc.connect();
+      healthMonitor.updateE3dcStatus(true);
+    } catch (error) {
+      console.error("Failed to connect to E3DC, continuing without it:", error);
+      healthMonitor.updateE3dcStatus(false);
+      e3dc = null;
+    } 
+  } */
+
   intervalId = startTimer();
 
-  process.on("SIGTERM", () => {
-    console.info("SIGTERM signal received: closing application");
+  const shutdown = (signal: string) => {
+    console.info(`${signal} signal received: closing application`);
     healthMonitor.stop();
     modbus.disconnect();
+    // e3dc?.disconnect();
     if (intervalId) clearInterval(intervalId);
     process.exit(0);
-  });
+  };
 
-  process.on("SIGINT", () => {
-    console.info("SIGINT signal received: closing application");
-    healthMonitor.stop();
-    modbus.disconnect();
-    if (intervalId) clearInterval(intervalId);
-    process.exit(0);
-  });
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 main().catch((error) => {
