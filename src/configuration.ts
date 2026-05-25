@@ -1,3 +1,11 @@
+export type E3dcConfiguration = {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  rscpKey: string;
+};
+
 export type Configuration = {
   modbusHost: string;
   modbusPort: number;
@@ -6,6 +14,7 @@ export type Configuration = {
   databaseConnectionString: string;
   intervalTime: number;
   verboseLogging: boolean;
+  e3dc: E3dcConfiguration | null;
 };
 
 export const loadConfiguration = (): Configuration => {
@@ -19,6 +28,12 @@ export const loadConfiguration = (): Configuration => {
   const intervalTimeStr = process.env["INTERVAL_TIME"];
   const verboseLoggingStr = process.env["VERBOSE_LOGGING"] || "false";
 
+  const e3dcHost = process.env["E3DC_HOST"];
+  const e3dcPortStr = process.env["E3DC_PORT"];
+  const e3dcUsername = process.env["E3DC_USERNAME"];
+  const e3dcPassword = process.env["E3DC_PASSWORD"];
+  const e3dcRscpKey = process.env["E3DC_RSCP_KEY"];
+
   let intervalTime: number = 0;
   let modbusPort: number = 0;
   let modbusTimeout: number = 0;
@@ -26,6 +41,7 @@ export const loadConfiguration = (): Configuration => {
   let shellyIp: string = "";
   let dbConnectionString: string = "";
   let verboseLogging: boolean = verboseLoggingStr === "true";
+  let e3dcConfig: E3dcConfiguration | null = null;
 
   if (
     !modbusHost ||
@@ -100,6 +116,42 @@ export const loadConfiguration = (): Configuration => {
     intervalTime = intervalTime * 1000;
   }
 
+  // E3DC is optional: enabled only when E3DC_HOST is set, but then all vars are required.
+  if (e3dcHost) {
+    const e3dcErrors: string[] = [];
+    let e3dcPort = 5033;
+
+    if (!e3dcUsername || e3dcUsername.trim() === "") {
+      e3dcErrors.push("E3DC_USERNAME is required when E3DC_HOST is set");
+    }
+    if (!e3dcPassword || e3dcPassword.trim() === "") {
+      e3dcErrors.push("E3DC_PASSWORD is required when E3DC_HOST is set");
+    }
+    if (!e3dcRscpKey || e3dcRscpKey.trim() === "") {
+      e3dcErrors.push("E3DC_RSCP_KEY is required when E3DC_HOST is set");
+    }
+    if (e3dcPortStr !== undefined) {
+      const parsed = parseInt(e3dcPortStr, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+        e3dcErrors.push("E3DC_PORT must be a valid port number between 1 and 65535 (default: 5033)");
+      } else {
+        e3dcPort = parsed;
+      }
+    }
+
+    if (e3dcErrors.length > 0) {
+      errors.push(...e3dcErrors);
+    } else {
+      e3dcConfig = {
+        host: e3dcHost,
+        port: e3dcPort,
+        username: e3dcUsername as string,
+        password: e3dcPassword as string,
+        rscpKey: e3dcRscpKey as string,
+      };
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(
       `Configuration validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`,
@@ -114,5 +166,6 @@ export const loadConfiguration = (): Configuration => {
     databaseConnectionString: dbConnectionString,
     intervalTime,
     verboseLogging,
+    e3dc: e3dcConfig,
   };
 };

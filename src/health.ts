@@ -8,6 +8,7 @@ interface HealthStatus {
     database: boolean;
     modbus: boolean;
     shelly: boolean;
+    e3dc: boolean | null; // null when E3DC is not configured
     lastFetch: {
       success: boolean;
       timestamp: string | null;
@@ -22,6 +23,7 @@ export class HealthMonitor {
   private isDatabaseConnected: boolean = false;
   private isModbusConnected: boolean = false;
   private isShellyConnected: boolean = false;
+  private isE3dcConnected: boolean | null = null; // null = not configured
   private server: ReturnType<typeof createServer> | null = null;
 
   constructor(private port: number = 3000) {}
@@ -63,6 +65,10 @@ export class HealthMonitor {
     this.isModbusConnected = connected;
   }
 
+  updateE3dcStatus(connected: boolean): void {
+    this.isE3dcConnected = connected;
+  }
+
   updateLastFetch(success: boolean): void {
     this.lastFetchTime = new Date();
     this.lastFetchSuccess = success;
@@ -88,6 +94,7 @@ export class HealthMonitor {
         database: this.isDatabaseConnected,
         modbus: this.isModbusConnected,
         shelly: this.isShellyConnected,
+        e3dc: this.isE3dcConnected,
         lastFetch: {
           success: this.lastFetchSuccess,
           timestamp: this.lastFetchTime?.toISOString() || null,
