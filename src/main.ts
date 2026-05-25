@@ -1,5 +1,5 @@
 import ModbusClient from "./modbus/modbus.js";
-import E3dcClient from "./e3dc/e3dc-client.js";
+// import E3dcClient from "./e3dc/e3dc-client.js";
 import { Database } from "./database.js";
 import { HealthMonitor } from "./health.js";
 import { executeAction } from "./actionExecuter.js";
@@ -14,7 +14,7 @@ import type { Configuration } from "./configuration.js";
 import type { ModbusConfig } from "./modbus/modbus-types.js";
 
 let modbus: ModbusClient;
-let e3dc: E3dcClient | null = null;
+// let e3dc: E3dcClient | null = null;
 let database: Database;
 let healthMonitor: HealthMonitor;
 let config: Configuration;
@@ -68,7 +68,7 @@ const startTimer = (): NodeJS.Timeout => {
           database,
           healthMonitor,
           config,
-          e3dc,
+           // e3dc,
         );
         if (actionErr) {
           console.error("Action execution failed:", actionErr.reason);
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   );
   console.info(`Modbus: ${config.modbusHost}:${config.modbusPort}`);
   console.info(`Shelly IP: ${config.shellyIP}`);
-  console.info(`E3DC: ${config.e3dc ? `${config.e3dc.host}:${config.e3dc.port}` : "disabled"}`);
+  //console.info(`E3DC: ${config.e3dc ? `${config.e3dc.host}:${config.e3dc.port}` : "disabled"}`);
 
   healthMonitor = new HealthMonitor(3000);
   healthMonitor.start();
